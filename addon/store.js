@@ -11,6 +11,9 @@ function buildRecord(type, data, store) {
     var id = data.id;
     identityMapForType(type, store)[id] = record;
     arrayForType(type, store).pushObject(record);
+
+    Ember.run.scheduleOnce('afterRender', store, store.updateFilters, type);
+
     return record;
 }
 
@@ -30,6 +33,7 @@ function identityMapForType(type, store) {
 
 var Store = Ember.Object.extend({
     init: function() {
+        this.set("filtersMap", {});
         this.set("identityMap", {});
         this.set("array", {});
     },
@@ -98,23 +102,41 @@ var Store = Ember.Object.extend({
           source: this._findAll(type)
         });
     },
+    updateFilters: function(type){
+        var filtersMap = this.get("filtersMap");
+        var filtersMapByType = filtersMap[type] || {};
+        var func = filtersMap[type];
+
+        if(func) {
+            var filter_value = func.get("filter_value");
+            var filter_attr = func.get("filter_attr");
+            var updatedContent = this._findAll(type).filterBy(filter_attr, filter_value);
+            func.set('content', Ember.A(updatedContent));
+        }
+    },
     _findWithFilter: function(type, filter_attr, filter_value) {
-        var computed_string = "source.@each." + filter_attr;
-        return Ember.ArrayProxy.extend({
+        var func = Ember.ArrayProxy.extend({
           push: function(type, data) {
               return this.push(type, data);
           }.bind(this, type),
           remove: function(type, id) {
-              this.remove(type, id);
+              this.remove(type, id); 
           }.bind(this, type),
-          content: Ember.computed(computed_string, function () {
+          content: Ember.computed(function () {
             var filter_value = this.get("filter_value");
             return Ember.A(this.get("source").filterBy(filter_attr, filter_value));
           })
         }).create({
+          filter_attr: filter_attr,
           filter_value: filter_value,
           source: this._findAll(type)
         });
+
+        var filtersMap = this.get("filtersMap");
+        var filtersMapByType = filtersMap[type] || {};
+        filtersMap[type] = func;
+
+        return func;
     },
     _findWithFilterFunc: function(type, filter_func, computed_keys) {
         var attributes = [];
